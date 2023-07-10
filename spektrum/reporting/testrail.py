@@ -47,8 +47,8 @@ class TestRailRenderer(object):
                 self.tr.get_sections(self.project, self.suite).json()
             )
 
-    def reconcile_spec_and_section(self, spec, metadata, test_names, exclude, sections=None):
-        utils.filter_cases_by_data(spec, metadata, test_names, exclude)
+    def reconcile_spec_and_section(self, spec, metadata, test_names, test_dependencies, exclude, sections=None):
+        utils.filter_cases_by_data(spec, metadata, test_names, test_dependencies, exclude)
 
         spec = TestRailSpecData(spec)
 
@@ -120,16 +120,18 @@ class TestRailRenderer(object):
                 child._spec,
                 metadata,
                 test_names,
+                test_dependencies,
                 exclude,
                 child_sections
             )
 
-    def track_top_level(self, specs, all_inherited, metadata, test_names, exclude):
+    def track_top_level(self, specs, all_inherited, metadata, test_names, test_dependencies, exclude):
         for spec in specs:
             self.reconcile_spec_and_section(
                 spec,
                 metadata,
                 test_names,
+                test_dependencies,
                 exclude,
                 self.sections.values()
             )

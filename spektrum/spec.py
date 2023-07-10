@@ -13,6 +13,7 @@ class Spec(object):
     __FIXTURE__ = False
     __CASE_CONCURRENCY__ = None
     __SPEC_CONCURRENCY__ = None
+    __RUNTIME_TEST_DEPENDENCIES__ = {}
 
     def __init__(self, parent=None):
         self._id = str(uuid.uuid4())
@@ -28,6 +29,13 @@ class Spec(object):
 
         if self.DATASET:
             self.__build_data_spec__()
+
+    @classmethod
+    def set_runtime_test_dependencies(cls, test_dependencies):
+        Spec.__RUNTIME_TEST_DEPENDENCIES__ = test_dependencies
+
+    def _get_runtime_test_dependencies(self):
+        return Spec.__RUNTIME_TEST_DEPENDENCIES__
 
     @classmethod
     def get_parent_class_name(cls):
@@ -48,8 +56,17 @@ class Spec(object):
         self.__test_cases__.append(case)
 
     def __build_data_spec__(self):
+        #case_mapping = {}
+        case_mapping = {name: {} for name in self.DATASET.keys()}
         cases = []
         for test_func in self.__test_cases__:
+
+            #_case_mapping = {}
+            #_case_mapping = {name: [] for name in self.DATASET.keys()}
+
+            print(test_func)
+            new_funcs = []
+
             base_metadata = get_case_data(test_func).metadata
 
             for name, data in self.DATASET.items():
@@ -95,8 +112,32 @@ class Spec(object):
                 setattr(self, func_name, unbound_method)
                 get_case_data(new_func).metadata = meta
                 cases.append(new_func)
+                new_funcs.append(new_func)
+
+                case_mapping[name].update({test_func: new_func})
 
         self.__test_cases__ = cases
+
+        print(f'CASE_MAPPING: {case_mapping}')
+
+        test_dependencies = Spec.__RUNTIME_TEST_DEPENDENCIES__
+        updated_dependencies = {}
+
+        for set, case_map in case_mapping.items():
+
+            for test_case, dependencies in test_dependencies.items():
+                _d = []
+                for dependency in dependencies:
+                    _d.append(case_map.get(dependency))
+
+                #{_c: _d} for _c in case_map.get(test_case)
+
+                updated_dependencies.update({case_map.get(test_case): _d})
+
+        print(f'ORIGINAL: {test_dependencies}')
+        print(f'UPDATED: {updated_dependencies}')
+
+        Spec.__RUNTIME_TEST_DEPENDENCIES__ = updated_dependencies
 
     @classmethod
     def __members__(cls):

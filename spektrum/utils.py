@@ -13,6 +13,7 @@ log = logger.get(__name__)
 SOURCE_CACHE = {}
 TRUE_STRINGS = frozenset(['true', 'True'])
 FALSE_STRINGS = frozenset(['false', 'False'])
+REGEX_TOKEN = 're:'
 
 
 def get_fullname(obj):
@@ -140,12 +141,50 @@ def get_function_kwargs(old_func, new_args):
     return kwargs
 
 
+def find_by_dependencies(test_dependencies, cases):
+    for case in cases:
+        for test, dependencies in test_dependencies.items():
+            if case != test:
+                continue
+            dependencies.reverse()
+            cases.extend(dependencies)
+
+    cases.reverse()
+
+    return cases
+
+
 def find_by_names(names, cases):
     return [
         case
         for case in cases
         if case.__name__ in names or snakecase_to_spaces(case.__name__) in names
     ]
+
+def find_by_names(names, cases):
+    matched_cases = []
+
+    for name in names:
+        use_regex = False
+        if name.startswith(REGEX_TOKEN):
+            name = name[len(REGEX_TOKEN):]
+            use_regex = True
+
+        if use_regex:
+            regex = re.compile(f'^{name}$')
+            matched_cases.extend([
+                case
+                for case in cases
+                if re.match(regex, case.__name__) or re.match(regex, snakecase_to_spaces(case.__name__))
+            ])
+        else:
+            matched_cases.extend([
+                case
+                for case in cases
+                if case.__name__ == name or snakecase_to_spaces(case.__name__) == name
+            ])
+
+    return matched_cases
 
 
 def clean_dictionary(data):
@@ -227,16 +266,18 @@ def flat_dict_diff(left, right):
     return dict(left.items() - right.items())
 
 
-def filter_cases_by_data(spec, metadata, test_names, exclude):
+def filter_cases_by_data(spec, metadata, test_names, test_dependencies, exclude):
     # I Don't really like messing with the test list after the fact.
     # This should really get fixed at somepoint
 
     if test_names:
         spec.__test_cases__ = find_by_names(test_names, spec.__test_cases__)
+        if test_dependencies:
+            spec.__test_cases__ = find_by_dependencies(spec._get_runtime_test_dependencies(), spec.__test_cases__)
     if metadata:
         spec.__test_cases__ = find_by_metadata(metadata, spec.__test_cases__)
     if exclude:
         spec.__test_cases__ = exclude_by_metadata(exclude, spec.__test_cases__)
 
     for child in spec.children:
-        filter_cases_by_data(child, metadata, test_names, exclude)
+        filter_cases_by_data(child, metadata, test_names, test_dependencies, exclude)

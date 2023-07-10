@@ -17,12 +17,23 @@ log = logger.get(__name__)
 
 
 class SpektrumRunner(object):
+    global_runner = None
+
     def __init__(self, reporting_options=None, concurrency=1):
         self.spec_semaphore = asyncio.Semaphore(concurrency)
         self.test_semaphore = asyncio.Semaphore(concurrency)
         self.reporting = ReportManager(reporting_options)
         self.renderer = PrettyRenderer(reporting_options)
         self.xunit_renderer = XUnitRenderer(reporting_options)
+        self.runtime_test_dependencies = {}
+        SpektrumRunner.global_runner = self
+
+
+    def add_test_dependencies(self, test, *dependencies):
+        for dependency in dependencies:
+            print(f'{test.__qualname__}: {dependency.__qualname__}')
+        self.runtime_test_dependencies.update({test: [*dependencies]})
+
 
     def run(self, search_paths, module_name=None, metadata=None, test_names=None, exclude=None,
             dry_run=False):
@@ -42,12 +53,15 @@ class SpektrumRunner(object):
                     module_name
                 )
 
+            Spec.set_runtime_test_dependencies(self.runtime_test_dependencies)
+
             instantiated = [cls() for cls in selected_modules]
             self.reporting.track_top_level(
                 instantiated,
                 all_inherited,
                 metadata,
                 test_names,
+                self.runtime_test_dependencies,
                 exclude
             )
 
@@ -61,7 +75,7 @@ class SpektrumRunner(object):
             #         exc_func = execute_nested_spec
 
             #     coroutines.append(
-            #         exc_func(spec, self.semaphore, self.reporting, metadata, test_names)
+            #         exc_func(spec, self.semaphore, self.reporting, metadata, test_names, test_dependencies)
             #     )
 
             # future = asyncio.gather(*coroutines)
@@ -75,6 +89,7 @@ class SpektrumRunner(object):
                     self.reporting,
                     metadata,
                     test_names,
+                    self.runtime_test_dependencies,
                     exclude,
                     dry_run=dry_run,
                 )
@@ -112,7 +127,7 @@ class SpektrumRunner(object):
 
 
 async def execute_nested_spec(spec, semaphore, reporting, metadata=None, test_names=None,
-                              exclude=None, dry_run=False):
+                              test_dependencies=None, exclude=None, dry_run=False):
     parents = []
     cls = spec.__parent_cls__
     last = None
@@ -142,6 +157,7 @@ async def execute_nested_spec(spec, semaphore, reporting, metadata=None, test_na
         reporting,
         metadata=metadata,
         test_names=test_names,
+        test_dependencies=test_dependencies,
         exclude=exclude,
         dry_run=dry_run,
     )
@@ -156,14 +172,14 @@ async def execute_nested_spec(spec, semaphore, reporting, metadata=None, test_na
 
 
 async def execute_spec(spec, spec_semaphore, test_semaphore, reporting,
-                       metadata=None, test_names=None, exclude=None, dry_run=False):
+                       metadata=None, test_names=None, test_dependencies=None, exclude=None, dry_run=False):
     if spec.__CASE_CONCURRENCY__:
         test_semaphore = spec.__CASE_CONCURRENCY__
     if spec.__SPEC_CONCURRENCY__:
         spec_semaphore = spec.__SPEC_CONCURRENCY__
 
     if not spec.parent:
-        utils.filter_cases_by_data(spec, metadata, test_names, exclude)
+        utils.filter_cases_by_data(spec, metadata, test_names, test_dependencies, exclude)
 
     # Limit spec setups to max concurrency level
     async with spec_semaphore:
@@ -188,6 +204,7 @@ async def execute_spec(spec, spec_semaphore, test_semaphore, reporting,
             reporting,
             metadata,
             test_names,
+            test_dependencies,
             exclude,
             dry_run=dry_run,
         )
